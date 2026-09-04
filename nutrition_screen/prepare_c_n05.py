@@ -54,14 +54,16 @@ def merge_one(cycle: str) -> tuple[pd.DataFrame, list[dict[str, object]]]:
 
     def load(path: str, required: bool = True) -> pd.DataFrame:
         df = fetch_csv(path, required=required)
-        sources.append({
-            "cycle": cycle,
-            "path": path,
-            "required": required,
-            "available": not df.empty,
-            "rows": int(len(df)),
-            "columns": int(df.shape[1]),
-        })
+        sources.append(
+            {
+                "cycle": cycle,
+                "path": path,
+                "required": required,
+                "available": not df.empty,
+                "rows": int(len(df)),
+                "columns": int(df.shape[1]),
+            }
+        )
         return df
 
     demo = load(f"Demographics/DEMO_{cycle}.csv")
@@ -80,14 +82,27 @@ def merge_one(cycle: str) -> tuple[pd.DataFrame, list[dict[str, object]]]:
         cbc = load(f"Laboratory/CBC_{cycle}.csv")
         crp = load(f"Laboratory/CRP_{cycle}.csv")
         lab = keep(tfr, ["SEQN", "LBXTFR", "LBDTFRSI"]).merge(
-            keep(fer, ["SEQN", "LBXFER", "LBDFERSI"]), on="SEQN", how="outer"
+            keep(fer, ["SEQN", "LBXFER", "LBDFERSI"]),
+            on="SEQN",
+            how="outer",
         )
 
     pieces = [
-        keep(demo, [
-            "SEQN", "RIAGENDR", "RIDAGEYR", "RIDRETH1", "RIDRETH3", "RIDEXPRG",
-            "WTMEC2YR", "SDMVPSU", "SDMVSTRA", "INDFMPIR",
-        ]),
+        keep(
+            demo,
+            [
+                "SEQN",
+                "RIAGENDR",
+                "RIDAGEYR",
+                "RIDRETH1",
+                "RIDRETH3",
+                "RIDEXPRG",
+                "WTMEC2YR",
+                "SDMVPSU",
+                "SDMVSTRA",
+                "INDFMPIR",
+            ],
+        ),
         lab,
         keep(cbc, ["SEQN", "LBXHGB", "LBXMCVSI", "LBXMCV", "LBXMCHSI", "LBXRDW"]),
         keep(crp, ["SEQN", "LBXCRP", "LBDHRPLC"]),
@@ -126,11 +141,12 @@ def merge_one(cycle: str) -> tuple[pd.DataFrame, list[dict[str, object]]]:
     return merged, sources
 
 
-def weighted_percent(mask: pd.Series, weight: pd.Series) -> float:
-    ok = mask.notna() & weight.notna() & (weight > 0)
+def weighted_percent(values: pd.Series, weight: pd.Series) -> float:
+    values_numeric = pd.to_numeric(values, errors="coerce")
+    ok = values_numeric.notna() & weight.notna() & (weight > 0)
     if not ok.any():
         return float("nan")
-    return float(np.average(mask.loc[ok].astype(float), weights=weight.loc[ok]) * 100.0)
+    return float(np.average(values_numeric.loc[ok], weights=weight.loc[ok]) * 100.0)
 
 
 def main() -> None:
@@ -158,7 +174,11 @@ def main() -> None:
         & cohort["hgb"].between(5, 20, inclusive="both")
     ].copy()
     add_flow("valid_core_iron_and_hemoglobin", cohort)
-    cohort = cohort.loc[cohort["weight"].gt(0) & cohort["psu_u"].notna() & cohort["strata_u"].notna()].copy()
+    cohort = cohort.loc[
+        cohort["weight"].gt(0)
+        & cohort["psu_u"].notna()
+        & cohort["strata_u"].notna()
+    ].copy()
     add_flow("valid_survey_design", cohort)
 
     cohort["group"] = np.select(
@@ -174,65 +194,169 @@ def main() -> None:
     add_flow("classified_three_group_cohort", cohort)
 
     cohort["anemia"] = (cohort["hgb"] < 12.0).astype(int)
-    cohort["low_mcv"] = np.where(cohort["mcv"].notna(), (cohort["mcv"] < 80.0).astype(int), np.nan)
+    cohort["low_mcv"] = np.where(
+        cohort["mcv"].notna(),
+        (cohort["mcv"] < 80.0).astype(int),
+        np.nan,
+    )
     cohort["log_crp"] = np.log(cohort["crp_mg_l"].clip(lower=0.01))
     cohort["log_stfr"] = np.log(cohort["stfr"])
-    cohort["smoking"] = np.select(
-        [cohort["smoked100"].eq(1), cohort["smoked100"].eq(2)],
-        ["ever", "never"],
-        default=np.nan,
+    cohort["smoking"] = pd.Series(pd.NA, index=cohort.index, dtype="string")
+    cohort.loc[cohort["smoked100"].eq(1), "smoking"] = "ever"
+    cohort.loc[cohort["smoked100"].eq(2), "smoking"] = "never"
+    cohort["diabetes"] = np.where(
+        cohort["diabetes_q"].eq(1),
+        1,
+        np.where(cohort["diabetes_q"].isin([2, 3]), 0, np.nan),
     )
-    cohort["diabetes"] = np.where(cohort["diabetes_q"].eq(1), 1, np.where(cohort["diabetes_q"].isin([2, 3]), 0, np.nan))
-    cohort["period"] = np.where(cohort["cycle"].isin(["C", "D"]), "discovery", "validation")
+    cohort["period"] = np.where(
+        cohort["cycle"].isin(["C", "D"]),
+        "discovery",
+        "validation",
+    )
 
     covariates = ["bmi", "crp_mg_l", "pir", "smoking", "race"]
     cohort["complete_case"] = cohort[covariates].notna().all(axis=1)
     add_flow("complete_case_full_adjustment", cohort.loc[cohort["complete_case"]])
 
     missing_rows: list[dict[str, object]] = []
-    for variable in ["stfr", "ferritin", "hgb", "mcv", "bmi", "crp_mg_l", "pir", "smoking", "diabetes"]:
-        for scope_name, frame in [("overall", cohort), *[(f"cycle_{c}", cohort.loc[cohort["cycle"].eq(c)]) for c in CYCLES]]]:
-            missing_rows.append({
-                "scope": scope_name,
-                "variable": variable,
-                "n": int(len(frame)),
-                "missing_n": int(frame[variable].isna().sum()),
-                "missing_pct": float(frame[variable].isna().mean() * 100) if len(frame) else np.nan,
-            })
+    scopes = [("overall", cohort)] + [
+        (f"cycle_{cycle}", cohort.loc[cohort["cycle"].eq(cycle)])
+        for cycle in CYCLES
+    ]
+    for variable in [
+        "stfr",
+        "ferritin",
+        "hgb",
+        "mcv",
+        "bmi",
+        "crp_mg_l",
+        "pir",
+        "smoking",
+        "diabetes",
+    ]:
+        for scope_name, frame in scopes:
+            missing_rows.append(
+                {
+                    "scope": scope_name,
+                    "variable": variable,
+                    "n": int(len(frame)),
+                    "missing_n": int(frame[variable].isna().sum()),
+                    "missing_pct": float(frame[variable].isna().mean() * 100)
+                    if len(frame)
+                    else np.nan,
+                }
+            )
 
     group_rows: list[dict[str, object]] = []
-    for scope_name, frame in [("overall", cohort), ("discovery", cohort.loc[cohort["period"].eq("discovery")]), ("validation", cohort.loc[cohort["period"].eq("validation")])]:
-        for group_name, g in frame.groupby("group", observed=True):
-            group_rows.append({
-                "scope": scope_name,
-                "group": group_name,
-                "n": int(len(g)),
-                "anemia_events": int(g["anemia"].sum()),
-                "anemia_pct_unweighted": float(g["anemia"].mean() * 100),
-                "anemia_pct_weighted": weighted_percent(g["anemia"].astype(bool), g["weight"]),
-                "mean_hgb_unweighted": float(g["hgb"].mean()),
-                "mean_mcv_unweighted": float(g["mcv"].mean()),
-                "weight_sum": float(g["weight"].sum()),
-            })
+    group_scopes = [
+        ("overall", cohort),
+        ("discovery", cohort.loc[cohort["period"].eq("discovery")]),
+        ("validation", cohort.loc[cohort["period"].eq("validation")]),
+    ]
+    for scope_name, frame in group_scopes:
+        for group_name, group_frame in frame.groupby("group", observed=True):
+            group_rows.append(
+                {
+                    "scope": scope_name,
+                    "group": group_name,
+                    "n": int(len(group_frame)),
+                    "anemia_events": int(group_frame["anemia"].sum()),
+                    "anemia_pct_unweighted": float(group_frame["anemia"].mean() * 100),
+                    "anemia_pct_weighted": weighted_percent(
+                        group_frame["anemia"],
+                        group_frame["weight"],
+                    ),
+                    "mean_hgb_unweighted": float(group_frame["hgb"].mean()),
+                    "mean_mcv_unweighted": float(group_frame["mcv"].mean()),
+                    "weight_sum": float(group_frame["weight"].sum()),
+                }
+            )
 
     source_df = pd.DataFrame(all_sources)
     flow_df = pd.DataFrame(flow)
     missing_df = pd.DataFrame(missing_rows)
     group_df = pd.DataFrame(group_rows)
 
-    semantic = pd.DataFrame([
-        {"variable": "stfr", "source": "L06TFR_C or TFR_D/E/F", "released_field": "LBXTFR", "semantics": "serum soluble transferrin receptor", "unit": "mg/L", "range_rule": "0.2-30"},
-        {"variable": "ferritin", "source": "L06TFR_C or FERTIN_D/E/F", "released_field": "LBDFER/LBXFER", "semantics": "serum ferritin", "unit": "ng/mL", "range_rule": "1-2000"},
-        {"variable": "hgb", "source": "L25_C or CBC_D/E/F", "released_field": "LBXHGB", "semantics": "measured hemoglobin", "unit": "g/dL", "range_rule": "5-20"},
-        {"variable": "mcv", "source": "L25_C or CBC_D/E/F", "released_field": "LBXMCVSI/LBXMCV", "semantics": "mean corpuscular volume", "unit": "fL", "range_rule": "no post-hoc truncation"},
-        {"variable": "crp_mg_l", "source": "L11_C or CRP_D/E/F", "released_field": "LBXCRP", "semantics": "C-reactive protein", "unit": "released mg/dL converted x10 to mg/L", "range_rule": "log transform"},
-        {"variable": "survey_design", "source": "DEMO_C/D/E/F", "released_field": "WTMEC2YR/SDMVPSU/SDMVSTRA", "semantics": "MEC weight, PSU and strata", "unit": "pooled weight divided by 4", "range_rule": "cycle-unique PSU/stratum IDs"},
-    ])
+    semantic = pd.DataFrame(
+        [
+            {
+                "variable": "stfr",
+                "source": "L06TFR_C or TFR_D/E/F",
+                "released_field": "LBXTFR",
+                "semantics": "serum soluble transferrin receptor",
+                "unit": "mg/L",
+                "range_rule": "0.2-30",
+            },
+            {
+                "variable": "ferritin",
+                "source": "L06TFR_C or FERTIN_D/E/F",
+                "released_field": "LBDFER/LBXFER",
+                "semantics": "serum ferritin",
+                "unit": "ng/mL",
+                "range_rule": "1-2000",
+            },
+            {
+                "variable": "hgb",
+                "source": "L25_C or CBC_D/E/F",
+                "released_field": "LBXHGB",
+                "semantics": "measured hemoglobin",
+                "unit": "g/dL",
+                "range_rule": "5-20",
+            },
+            {
+                "variable": "mcv",
+                "source": "L25_C or CBC_D/E/F",
+                "released_field": "LBXMCVSI/LBXMCV",
+                "semantics": "mean corpuscular volume",
+                "unit": "fL",
+                "range_rule": "no post-hoc truncation",
+            },
+            {
+                "variable": "crp_mg_l",
+                "source": "L11_C or CRP_D/E/F",
+                "released_field": "LBXCRP",
+                "semantics": "C-reactive protein",
+                "unit": "released mg/dL converted x10 to mg/L",
+                "range_rule": "log transform",
+            },
+            {
+                "variable": "survey_design",
+                "source": "DEMO_C/D/E/F",
+                "released_field": "WTMEC2YR/SDMVPSU/SDMVSTRA",
+                "semantics": "MEC weight, PSU and strata",
+                "unit": "pooled weight divided by four",
+                "range_rule": "cycle-unique PSU and stratum IDs",
+            },
+        ]
+    )
 
     out_cols = [
-        "SEQN", "cycle", "cycle_years", "period", "age", "race", "pregnancy", "weight", "psu_u", "strata_u",
-        "stfr", "ferritin", "hgb", "mcv", "crp_mg_l", "log_crp", "bmi", "pir", "smoking", "diabetes",
-        "group", "anemia", "low_mcv", "log_stfr", "complete_case",
+        "SEQN",
+        "cycle",
+        "cycle_years",
+        "period",
+        "age",
+        "race",
+        "pregnancy",
+        "weight",
+        "psu_u",
+        "strata_u",
+        "stfr",
+        "ferritin",
+        "hgb",
+        "mcv",
+        "crp_mg_l",
+        "log_crp",
+        "bmi",
+        "pir",
+        "smoking",
+        "diabetes",
+        "group",
+        "anemia",
+        "low_mcv",
+        "log_stfr",
+        "complete_case",
     ]
     cohort.loc[:, out_cols].to_csv(OUT / "c_n05_analysis_core.csv", index=False)
     source_df.to_csv(OUT / "c_n05_source_audit.csv", index=False)
@@ -241,17 +365,26 @@ def main() -> None:
     group_df.to_csv(OUT / "c_n05_group_counts.csv", index=False)
     semantic.to_csv(OUT / "c_n05_semantic_audit.csv", index=False)
 
+    required_failures = source_df.loc[
+        source_df["required"].astype(bool) & ~source_df["available"].astype(bool),
+        "path",
+    ].tolist()
     prep_status = {
         "candidate_code": "C-N05",
         "core_n": int(len(cohort)),
         "complete_case_n": int(cohort["complete_case"].sum()),
         "complete_case_retention": float(cohort["complete_case"].mean()),
         "key_group_n": int(cohort["group"].eq("discordant").sum()),
-        "key_group_anemia_events": int(cohort.loc[cohort["group"].eq("discordant"), "anemia"].sum()),
+        "key_group_anemia_events": int(
+            cohort.loc[cohort["group"].eq("discordant"), "anemia"].sum()
+        ),
         "cycles": sorted(cohort["cycle"].unique().tolist()),
-        "source_failures": source_df.loc[source_df["required"] & ~source_df["available"], "path"].tolist(),
+        "source_failures": required_failures,
     }
-    (OUT / "c_n05_prep_status.json").write_text(json.dumps(prep_status, indent=2), encoding="utf-8")
+    (OUT / "c_n05_prep_status.json").write_text(
+        json.dumps(prep_status, indent=2),
+        encoding="utf-8",
+    )
     print(json.dumps(prep_status, ensure_ascii=False, indent=2))
 
 
