@@ -1,0 +1,34 @@
+name: nutrition-blind-screen
+
+on:
+  push:
+    branches:
+      - analysis/nutrition-blind-screen-20260905
+    paths:
+      - 'nutrition_screen/**'
+      - '.github/workflows/nutrition_screen.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  probe:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Install dependencies
+        run: pip install pandas pyreadstat requests
+      - name: Probe official NHANES modules
+        run: python nutrition_screen/probe_nhanes.py
+      - name: Upload probe output
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: nhanes-module-probe
+          path: nutrition_screen/output/
+          if-no-files-found: warn
