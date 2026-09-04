@@ -1,0 +1,39 @@
+name: nutrition-c-n05-validation
+
+on:
+  push:
+    branches:
+      - analysis/nutrition-blind-screen-20260905
+    paths:
+      - 'nutrition_screen/**'
+      - '.github/workflows/nutrition_c_n05.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  screen-c-n05:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Install analysis dependencies
+        run: |
+          pip install pandas numpy requests
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq r-base r-cran-survey r-cran-jsonlite
+      - name: Prepare participant-level cohort
+        run: python nutrition_screen/prepare_c_n05.py
+      - name: Run complex-survey crude, adjusted, spline and sensitivity models
+        run: Rscript nutrition_screen/analyze_c_n05.R
+      - name: Upload complete audit output
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: blind-nutrition-screen-c-n05-final
+          path: nutrition_screen/output/
+          if-no-files-found: warn
