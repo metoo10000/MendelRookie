@@ -1,0 +1,82 @@
+name: nutrition-master-n11-n16
+
+on:
+  push:
+    branches:
+      - analysis/nutrition-blind-screen-20260905
+    paths:
+      - '.github/workflows/nutrition_master_n11_n16.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: analysis/nutrition-blind-screen-20260905
+          fetch-depth: 0
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - uses: r-lib/actions/setup-r@v2
+        with:
+          r-version: 'release'
+      - name: Install dependencies
+        run: |
+          pip install pandas numpy requests
+          Rscript -e 'install.packages(c("survey","jsonlite"), repos="https://cloud.r-project.org")'
+      - name: Candidate batch N11-N13 data
+        continue-on-error: true
+        run: python nutrition_stage/prepare_batch_n11.py
+      - name: Candidate batch N11-N13 models
+        continue-on-error: true
+        run: Rscript nutrition_stage/analyze_batch_n11.R
+      - name: Candidate N14 data
+        continue-on-error: true
+        run: python nutrition_stage/prepare_c_n14.py
+      - name: Candidate N14 models
+        continue-on-error: true
+        run: Rscript nutrition_stage/analyze_c_n14.R
+      - name: Candidate N15 data
+        continue-on-error: true
+        run: python nutrition_stage/prepare_c_n15.py
+      - name: Candidate N15 models
+        continue-on-error: true
+        run: Rscript nutrition_stage/analyze_c_n15.R
+      - name: Candidate N16 data
+        continue-on-error: true
+        run: python nutrition_stage/prepare_c_n16.py
+      - name: Candidate N16 models
+        continue-on-error: true
+        run: Rscript nutrition_stage/analyze_c_n16.R
+      - name: Conservative full-text deduplication and final selection
+        continue-on-error: true
+        run: python nutrition_stage/finalize_nutrition_selection_v2.py
+      - name: Commit aggregate outputs in one transaction
+        if: always()
+        run: |
+          git config user.name "nutrition-screen-bot"
+          git config user.email "actions@users.noreply.github.com"
+          git pull --rebase origin analysis/nutrition-blind-screen-20260905 || true
+          git add nutrition_stage/output_batch_n11 nutrition_stage/output_c_n14 nutrition_stage/output_c_n15 nutrition_stage/output_c_n16 nutrition_stage/final_selection || true
+          if ! git diff --cached --quiet; then
+            git commit -m "Store sequential master nutrition screening results"
+            git push origin HEAD:analysis/nutrition-blind-screen-20260905
+          fi
+      - name: Upload master aggregate result
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: nutrition-master-n11-n16-results
+          path: |
+            nutrition_stage/output_batch_n11/
+            nutrition_stage/output_c_n14/
+            nutrition_stage/output_c_n15/
+            nutrition_stage/output_c_n16/
+            nutrition_stage/final_selection/
+          if-no-files-found: warn
