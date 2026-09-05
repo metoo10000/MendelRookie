@@ -1,0 +1,42 @@
+name: nutrition-c-n13
+
+on:
+  push:
+    branches:
+      - analysis/nutrition-blind-screen-20260905
+    paths:
+      - 'nutrition_stage/prepare_c_n13.py'
+      - 'nutrition_stage/analyze_c_n13.R'
+      - '.github/workflows/nutrition_c_n13.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  screen-c-n13:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - uses: r-lib/actions/setup-r@v2
+        with:
+          r-version: 'release'
+      - name: Install Python dependencies
+        run: pip install pandas numpy requests pyreadstat
+      - name: Install R dependencies
+        run: Rscript -e 'install.packages(c("survey","jsonlite"), repos="https://cloud.r-project.org")'
+      - name: Build participant-level cohort from official NHANES files
+        run: python nutrition_stage/prepare_c_n13.py
+      - name: Run survey-weighted crude adjusted spline missingness and sensitivity models
+        run: Rscript nutrition_stage/analyze_c_n13.R
+      - name: Upload complete audit output
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: blind-nutrition-screen-c-n13
+          path: nutrition_stage/output_c_n13/
+          if-no-files-found: warn
