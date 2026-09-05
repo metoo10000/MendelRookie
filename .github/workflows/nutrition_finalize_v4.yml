@@ -1,0 +1,58 @@
+name: nutrition-finalize-v4
+
+on:
+  push:
+    branches:
+      - analysis/nutrition-blind-screen-20260905
+    paths:
+      - 'nutrition_stage/output_batch_n11/batch_status.json'
+      - 'nutrition_stage/output_c_n14/status.json'
+      - 'nutrition_stage/output_c_n15/status.json'
+      - 'nutrition_stage/output_c_n16/status.json'
+      - 'nutrition_stage/output_c_n17/status.json'
+      - 'nutrition_stage/output_c_n18/status.json'
+      - 'nutrition_stage/finalize_nutrition_selection.py'
+      - 'nutrition_stage/finalize_nutrition_selection_v2.py'
+      - 'nutrition_stage/finalize_nutrition_selection_v3.py'
+      - 'nutrition_stage/finalize_nutrition_selection_v4.py'
+      - '.github/workflows/nutrition_finalize_v4.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  finalize:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: analysis/nutrition-blind-screen-20260905
+          fetch-depth: 0
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - run: pip install requests
+      - name: Run final data-plus-full-text gate
+        run: |
+          cd nutrition_stage
+          python finalize_nutrition_selection_v4.py
+      - name: Commit aggregate final result
+        if: always()
+        run: |
+          git config user.name "nutrition-screen-bot"
+          git config user.email "actions@users.noreply.github.com"
+          git pull --rebase origin analysis/nutrition-blind-screen-20260905 || true
+          git add nutrition_stage/final_selection || true
+          if ! git diff --cached --quiet; then
+            git commit -m "Update final nutrition selection including C-N18"
+            git push origin HEAD:analysis/nutrition-blind-screen-20260905
+          fi
+      - name: Upload final result
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: nutrition-final-selection-v4
+          path: nutrition_stage/final_selection/
+          if-no-files-found: warn
