@@ -1,0 +1,74 @@
+name: nutrition-master-n17-n19
+
+on:
+  push:
+    branches:
+      - analysis/nutrition-blind-screen-20260905
+    paths:
+      - '.github/workflows/nutrition_master_n17_n19.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: analysis/nutrition-blind-screen-20260905
+          fetch-depth: 0
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - uses: r-lib/actions/setup-r@v2
+        with:
+          r-version: 'release'
+      - name: Install dependencies
+        run: |
+          pip install pandas numpy requests
+          Rscript -e 'install.packages(c("survey","jsonlite"), repos="https://cloud.r-project.org")'
+      - name: Run C-N17
+        continue-on-error: true
+        run: |
+          python nutrition_stage/prepare_c_n17.py
+          Rscript nutrition_stage/analyze_c_n17.R
+      - name: Run C-N18
+        continue-on-error: true
+        run: |
+          python nutrition_stage/prepare_c_n18.py
+          Rscript nutrition_stage/analyze_c_n18.R
+      - name: Run C-N19
+        continue-on-error: true
+        run: |
+          python nutrition_stage/prepare_c_n19.py
+          Rscript nutrition_stage/analyze_c_n19.R
+      - name: Run full-text deduplication and final selection
+        continue-on-error: true
+        run: |
+          cd nutrition_stage
+          python finalize_nutrition_selection_v5.py
+      - name: Commit all aggregate outputs
+        if: always()
+        run: |
+          git config user.name "nutrition-screen-bot"
+          git config user.email "actions@users.noreply.github.com"
+          git pull --rebase origin analysis/nutrition-blind-screen-20260905 || true
+          git add nutrition_stage/output_c_n17 nutrition_stage/output_c_n18 nutrition_stage/output_c_n19 nutrition_stage/final_selection || true
+          if ! git diff --cached --quiet; then
+            git commit -m "Store sequential master N17-N19 screening results"
+            git push origin HEAD:analysis/nutrition-blind-screen-20260905
+          fi
+      - name: Upload master result
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: nutrition-master-n17-n19-results
+          path: |
+            nutrition_stage/output_c_n17/
+            nutrition_stage/output_c_n18/
+            nutrition_stage/output_c_n19/
+            nutrition_stage/final_selection/
+          if-no-files-found: warn
