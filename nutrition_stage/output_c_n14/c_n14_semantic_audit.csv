@@ -1,0 +1,5 @@
+concept,fields,meaning,unit,rule
+dietary_sodium,DR1TSODI and DR2TSODI,mean sodium from two complete 24-hour recalls,mg/day,low <2000; higher >=2500; intermediate excluded
+drug_exposure,RXDDRUG in RXQ_RX,generic-name thiazide use in past 30 days,person-level class,thiazide only; loop and potassium-sparing agents excluded
+outcome,LBXSNASI,measured serum sodium,mmol/L,primary <=135; strict <135; continuous secondary
+survey_design,"WTDR2D, SDMVPSU, SDMVSTRA",day-2 dietary weight and NHANES design,survey,pooled weight divided by six; cycle-unique PSU/strata

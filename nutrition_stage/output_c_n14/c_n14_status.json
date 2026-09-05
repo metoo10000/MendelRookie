@@ -1,0 +1,75 @@
+{
+  "candidate_code": "C-N14",
+  "data_analysis_completed": true,
+  "prep": {
+    "candidate_code": "C-N14",
+    "actual_n": 1357,
+    "complete_case_n": 1235,
+    "complete_case_retention": 0.9101,
+    "primary_events": 108,
+    "strict_events": 65,
+    "key_group_n": 309,
+    "key_group_events": 23,
+    "validation_key_group_n": 141,
+    "validation_key_group_events": 11,
+    "cycles": ["E", "F", "G", "H", "I", "J"]
+  },
+  "primary": {
+    "adjusted_pr": {
+      "estimate": 0.4265,
+      "lower": 0.1696,
+      "upper": 1.0725,
+      "p": 0.0747
+    },
+    "adjusted_rd": {
+      "estimate": -0.0813,
+      "lower": -0.1694,
+      "upper": 0.0067,
+      "p": 0.0747
+    },
+    "adjusted_serum_na_difference": {
+      "estimate": 0.4086,
+      "lower": -0.393,
+      "upper": 1.2103,
+      "p": 0.3214
+    }
+  },
+  "discovery": {
+    "pr": 0.2583,
+    "rd": -0.1234,
+    "na_difference": 0.7169
+  },
+  "validation": {
+    "pr": 0.7483,
+    "rd": -0.0289,
+    "na_difference": -0.0174
+  },
+  "nonlinearity": [
+    {
+      "outcome": "hyponatremia_135",
+      "n": 1235,
+      "p_nonlinear": 0.009,
+      "knots_mg_day": "1508|3015|3901|5984"
+    },
+    {
+      "outcome": "serum_sodium",
+      "n": 1235,
+      "p_nonlinear": 0.4861,
+      "knots_mg_day": "1508|3015|3901|5984"
+    }
+  ],
+  "sensitivity_concordant": 0,
+  "sensitivity_total": 19,
+  "gates": {
+    "sample_gate": false,
+    "complete_case_retention_gate": true,
+    "key_group_event_gate": false,
+    "clinical_magnitude_precision_gate": false,
+    "temporal_replication_gate": false,
+    "sensitivity_direction_gate": false,
+    "nonlinearity_completed": true,
+    "missingness_mechanism_completed": true
+  },
+  "data_gate_pass": false,
+  "final_state": "NO_GO_DATA_GATE"
+}

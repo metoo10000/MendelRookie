@@ -1,0 +1,10 @@
+step,n
+all_selected_cycle_records,59842
+age_50_79,15099
+exclude_known_pregnancy,15099
+current_thiazide_only_without_potassium_sparing,2214
+exclude_known_heart_failure,2144
+two_valid_dietary_recalls,1770
+valid_nutrition_electrolyte_and_survey_data,1636
+frozen_low_vs_higher_sodium_comparison,1357
+complete_case_full_adjustment,1235

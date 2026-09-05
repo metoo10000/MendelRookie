@@ -1,0 +1,20 @@
+{
+  "candidate_code": "C-N14",
+  "actual_n": 1357,
+  "complete_case_n": 1235,
+  "complete_case_retention": 0.9100957995578481,
+  "primary_events": 108,
+  "strict_events": 65,
+  "key_group_n": 309,
+  "key_group_events": 23,
+  "validation_key_group_n": 141,
+  "validation_key_group_events": 11,
+  "cycles": [
+    "E",
+    "F",
+    "G",
+    "H",
+    "I",
+    "J"
+  ]
+}
